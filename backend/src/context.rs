@@ -23,6 +23,7 @@ use tokio::sync::broadcast;
 use crate::debug::save_image_for_training_to;
 use crate::{
     Action, RequestHandler,
+    array::Array,
     bridge::{DefaultKeySender, ImageCapture, ImageCaptureKind, KeySender, KeySenderMethod},
     buff::{Buff, BuffKind, BuffState},
     database::{CaptureMode, InputMethod, KeyBinding},
@@ -204,6 +205,7 @@ fn update_loop() {
     });
     #[cfg(debug_assertions)]
     let mut recording_images_id = None;
+    let mut last_frames = Array::<Box<dyn Detector>, 3>::new();
 
     loop_with_fps(FPS, || {
         let mat = image_capture.grab().map(OwnedMat::new);
@@ -212,6 +214,14 @@ fn update_loop() {
         let detector = mat.map(CachedDetector::new);
 
         if let Some(detector) = detector {
+            if last_frames.len() == 3 {
+                let _ = detector.detect_rune_arrow_2(
+                    &last_frames
+                        .iter()
+                        .map(|detector| detector.mat())
+                        .collect::<Vec<_>>(),
+                );
+            }
             context.detector = Some(Box::new(detector));
             context.minimap = fold_context(&context, context.minimap, &mut minimap_state);
             context.player = fold_context(&context, context.player, &mut player_state);
@@ -232,6 +242,10 @@ fn update_loop() {
             if let Some(id) = recording_images_id.clone() {
                 save_image_for_training_to(context.detector_unwrap().mat(), Some(id), false, false);
             }
+            if last_frames.len() == 3 {
+                last_frames.remove(0);
+            }
+            last_frames.push(context.detector.take().unwrap());
         }
 
         // Poll requests, keys and update scheduled notifications frames

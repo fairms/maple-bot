@@ -40,6 +40,7 @@ fn main() {
 
     let mob_model = dir.join("mob.onnx");
     let rune_model = dir.join("rune.onnx");
+    let rune_2_model = dir.join("rune_2.onnx");
     let minimap_model = dir.join("minimap_nms.onnx");
     let onnx_runtime = dir.join("onnxruntime.dll");
     let text_detection_model = dir.join("text_detection.onnx");
@@ -194,6 +195,10 @@ fn main() {
     println!(
         "cargo:rustc-env=RUNE_MODEL={}",
         rune_model.to_str().unwrap()
+    );
+    println!(
+        "cargo:rustc-env=RUNE_2_MODEL={}",
+        rune_2_model.to_str().unwrap()
     );
     println!(
         "cargo:rustc-env=TEXT_DETECTION_MODEL={}",

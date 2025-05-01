@@ -33,7 +33,7 @@ use opencv::{
         INTER_CUBIC, MORPH_RECT, RETR_EXTERNAL, THRESH_BINARY, THRESH_OTSU, TM_CCOEFF_NORMED,
         bounding_rect, connected_components_with_stats, cvt_color_def, dilate_def,
         find_contours_def, get_structuring_element_def, match_template, min_area_rect, resize,
-        threshold,
+        resize_def, threshold,
     },
     traits::OpenCVIntoExternContainer,
 };
@@ -106,6 +106,9 @@ pub trait Detector: 'static + Send + DynClone + Debug {
         preds: Option<&mut (Vec<Vec<f32>>, f32, f32)>,
     ) -> Result<[KeyKind; 4]>;
 
+    /// Detects 1 rune arrow from the given RGBA image `Mat` and the last three frames history.
+    fn detect_rune_arrow_2(&self, last_frames: &[&OwnedMat]) -> Result<KeyKind>;
+
     /// Detects the Erda Shower skill from the given BGRA `Mat` image.
     fn detect_erda_shower(&self) -> Result<Rect>;
 }
@@ -133,6 +136,7 @@ mock! {
             &'a self,
             preds: Option<&'a mut (Vec<Vec<f32>>, f32, f32)>,
         ) -> Result<[KeyKind; 4]>;
+        fn detect_rune_arrow_2<'a>(&'a self, last_frames: &'a [&'a OwnedMat]) -> Result<KeyKind>;
         fn detect_erda_shower(&self) -> Result<Rect>;
     }
 
@@ -259,6 +263,9 @@ impl Detector for CachedDetector {
         preds: Option<&mut (Vec<Vec<f32>>, f32, f32)>,
     ) -> Result<[KeyKind; 4]> {
         detect_rune_arrows(&*self.mat, preds)
+    }
+    fn detect_rune_arrow_2(&self, last_frames: &[&OwnedMat]) -> Result<KeyKind> {
+        detect_rune_arrows_2(self.mat(), last_frames)
     }
 
     fn detect_erda_shower(&self) -> Result<Rect> {
@@ -1047,6 +1054,67 @@ fn detect_rune_arrows(
         preds[3][4]
     );
     Ok([first, second, third, fourth])
+}
+
+fn detect_rune_arrows_2(mat: &OwnedMat, last_frames: &[&OwnedMat]) -> Result<KeyKind> {
+    static RUNE_MODEL: LazyLock<Session> = LazyLock::new(|| {
+        Session::builder()
+            .and_then(|b| b.commit_from_memory(include_bytes!(env!("RUNE_2_MODEL"))))
+            .expect("unable to build rune detection session")
+    });
+    const SIZE: i32 = 96;
+
+    let mut first = mat.try_clone().unwrap();
+    let mut second = last_frames[0].try_clone().unwrap();
+    let mut third = last_frames[1].try_clone().unwrap();
+    let mut fourth = last_frames[2].try_clone().unwrap();
+
+    unsafe {
+        first.modify_inplace(|mat, mat_mut| {
+            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
+            resize_def(mat, mat_mut, Size::new(SIZE, SIZE)).unwrap();
+            mat.convert_to_def(mat_mut, CV_32FC3).unwrap();
+        });
+        second.modify_inplace(|mat, mat_mut| {
+            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
+            resize_def(mat, mat_mut, Size::new(SIZE, SIZE)).unwrap();
+            mat.convert_to_def(mat_mut, CV_32FC3).unwrap();
+        });
+        third.modify_inplace(|mat, mat_mut| {
+            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
+            resize_def(mat, mat_mut, Size::new(SIZE, SIZE)).unwrap();
+            mat.convert_to_def(mat_mut, CV_32FC3).unwrap();
+        });
+        fourth.modify_inplace(|mat, mat_mut| {
+            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
+            resize_def(mat, mat_mut, Size::new(SIZE, SIZE)).unwrap();
+            mat.convert_to_def(mat_mut, CV_32FC3).unwrap();
+        });
+    }
+
+    let first = first.reshape_nd(1, &[3, SIZE, SIZE]).unwrap();
+    let second = second.reshape_nd(1, &[3, SIZE, SIZE]).unwrap();
+    let third = third.reshape_nd(1, &[3, SIZE, SIZE]).unwrap();
+    let fourth = fourth.reshape_nd(1, &[3, SIZE, SIZE]).unwrap();
+
+    let tensor = Tensor::from_array((
+        [1, 12, 96, 96],
+        [
+            first.data_typed::<f32>().unwrap(),
+            second.data_typed::<f32>().unwrap(),
+            third.data_typed::<f32>().unwrap(),
+            fourth.data_typed::<f32>().unwrap(),
+        ]
+        .concat(),
+    ))
+    .unwrap();
+    let input = SessionInputValue::Owned(tensor.into_dyn());
+    let output = RUNE_MODEL.run([input]).unwrap();
+    let output = output["output_0"].try_extract_raw_tensor::<i64>();
+    println!("{:?}", output);
+
+    // hconcat2(src1, src2, dst)
+    Err(anyhow!("asasda"))
 }
 
 fn detect_erda_shower(mat: &impl MatTraitConst) -> Result<Rect> {
