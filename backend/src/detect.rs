@@ -43,7 +43,7 @@ use ort::{
 };
 use platforms::windows::KeyKind;
 
-use crate::{buff::BuffKind, mat::OwnedMat};
+use crate::{buff::BuffKind, debug::debug_mat, mat::OwnedMat};
 
 pub trait Detector: 'static + Send + DynClone + Debug {
     fn mat(&self) -> &OwnedMat;
@@ -1065,29 +1065,33 @@ fn detect_rune_arrows_2(mat: &OwnedMat, last_frames: &[&OwnedMat]) -> Result<Key
     const SIZE: i32 = 96;
 
     let mut first = mat.try_clone().unwrap();
-    let mut second = last_frames[0].try_clone().unwrap();
+    let mut second = last_frames[2].try_clone().unwrap();
     let mut third = last_frames[1].try_clone().unwrap();
-    let mut fourth = last_frames[2].try_clone().unwrap();
+    let mut fourth = last_frames[0].try_clone().unwrap();
 
     unsafe {
         first.modify_inplace(|mat, mat_mut| {
-            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
             resize_def(mat, mat_mut, Size::new(SIZE, SIZE)).unwrap();
+            // debug_mat("First", mat, 0, &[]);
+            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
             mat.convert_to_def(mat_mut, CV_32FC3).unwrap();
         });
         second.modify_inplace(|mat, mat_mut| {
-            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
             resize_def(mat, mat_mut, Size::new(SIZE, SIZE)).unwrap();
+            // debug_mat("Second", mat, 0, &[]);
+            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
             mat.convert_to_def(mat_mut, CV_32FC3).unwrap();
         });
         third.modify_inplace(|mat, mat_mut| {
-            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
             resize_def(mat, mat_mut, Size::new(SIZE, SIZE)).unwrap();
+            // debug_mat("Third", mat, 0, &[]);
+            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
             mat.convert_to_def(mat_mut, CV_32FC3).unwrap();
         });
         fourth.modify_inplace(|mat, mat_mut| {
-            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
             resize_def(mat, mat_mut, Size::new(SIZE, SIZE)).unwrap();
+            // debug_mat("Fourth", mat, 0, &[]);
+            cvt_color_def(mat, mat_mut, COLOR_BGRA2RGB).unwrap();
             mat.convert_to_def(mat_mut, CV_32FC3).unwrap();
         });
     }
@@ -1100,18 +1104,21 @@ fn detect_rune_arrows_2(mat: &OwnedMat, last_frames: &[&OwnedMat]) -> Result<Key
     let tensor = Tensor::from_array((
         [1, 12, 96, 96],
         [
-            first.data_typed::<f32>().unwrap(),
-            second.data_typed::<f32>().unwrap(),
-            third.data_typed::<f32>().unwrap(),
             fourth.data_typed::<f32>().unwrap(),
+            third.data_typed::<f32>().unwrap(),
+            second.data_typed::<f32>().unwrap(),
+            first.data_typed::<f32>().unwrap(),
         ]
         .concat(),
     ))
     .unwrap();
     let input = SessionInputValue::Owned(tensor.into_dyn());
     let output = RUNE_MODEL.run([input]).unwrap();
-    let output = output["output_0"].try_extract_raw_tensor::<i64>();
-    println!("{:?}", output);
+    let output = output["output_0"].try_extract_raw_tensor::<i64>().unwrap();
+    let (_, arrow) = output;
+    if arrow[0] != 4 {
+        println!("{}", arrow[0]);
+    }
 
     // hconcat2(src1, src2, dst)
     Err(anyhow!("asasda"))
